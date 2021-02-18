@@ -68,9 +68,12 @@ def policy_evaluation(P, nS, nA, policy, gamma=0.9, tol=1e-3):
 			current_action = policy[i]
 			curr = P[i][current_action]
 			for results in curr:
-				output = results[0]*(results[2]+(gamma*value_function[results[1]]))
+				probability = results[0]
+				nextState = results[1]
+				reward = results[2]
+				output = (probability*(reward+(gamma*value_function[nextState])))
 				v_curr[i] += output
-		if((max(v_curr-value_function)) < tol):
+		if((max(abs(v_curr-value_function)))<tol):
 			converged = True
 		value_function=v_curr
 	############################
@@ -107,7 +110,10 @@ def policy_improvement(P, nS, nA, value_from_policy, policy, gamma=0.9):
 		for j in range(nA):
 			curr = P[i][j]
 			for results in curr:
-				output = results[0]*(results[2]+(gamma*value_from_policy[results[1]])) 
+				probability = results[0]
+				nextState = results[1]
+				reward = results[2]
+				output = (probability*(reward+(gamma*value_from_policy[nextState])))
 				state[j] += output
 		new_policy[i] = np.argmax(state)
 	############################
@@ -142,7 +148,7 @@ def policy_iteration(P, nS, nA, gamma=0.9, tol=10e-3):
 	while(not endCase):
 		val = policy_evaluation(P, nS, nA, policy)
 		betterPolicy = policy_improvement(P, nS, nA, val, policy)
-		if(max(betterPolicy-policy)<tol):
+		if(max(abs(betterPolicy-policy))<tol):
 			endCase = True
 		policy = betterPolicy
 	############################
@@ -170,9 +176,37 @@ def value_iteration(P, nS, nA, gamma=0.9, tol=1e-3):
 	policy = np.zeros(nS, dtype=int)
 	############################
 	# YOUR IMPLEMENTATION HERE #
-
-
+	converged = False
+	while(not converged):
+		v_curr = np.zeros(nS)
+		for i in range(nS):
+			a_curr = np.zeros(nA)
+			for j in range(nA):
+				current = P[i][j]
+				for results in current:
+					probability = results[0]
+					nextState = results[1]
+					reward = results[2]
+					output = (probability*(reward+(gamma*value_function[nextState])))
+					a_curr[j] += output
+			v_curr[i] = max(a_curr)
+		if((max(abs(v_curr-value_function)))<tol):
+			converged = True
+		value_function = v_curr
+	
+	policy = policy_improvement(P, nS, nA, value_function, policy, 0.9)	
+	# for i in range(nS):
+	# 	a_curr = np.zeros(nA)
+	# 	for j in range (nA):
+	# 		current = P[i][j]
+	# 		for results in current:
+	# 			probability = results[0]
+	# 			nextState = results[1]
+	# 			reward = results[2]
+	# 			output = probability*(reward+(gamma*value_function[nextState])) 
+	# 			a_curr[j] += output
 	############################
+
 	return value_function, policy
 
 def render_single(env, policy, max_steps=100):
@@ -204,7 +238,7 @@ def render_single(env, policy, max_steps=100):
     print("The agent didn't reach a terminal state in {} steps.".format(max_steps))
   else:
   	print("Episode reward: %f" % episode_reward)
-
+  return episode_reward
 
 # Edit below to run policy and value iteration on different environments and
 # visualize the resulting policies in action!
@@ -212,16 +246,37 @@ def render_single(env, policy, max_steps=100):
 if __name__ == "__main__":
 	# comment/uncomment these lines to switch between deterministic/stochastic environments
 	env = gym.make("Deterministic-4x4-FrozenLake-v0")
-	# env = gym.make("Stochastic-4x4-FrozenLake-v0")
+	print("Begning Deterministic Environment:")
+	iterations = 200
+	det_policy_result = 0
+	det_val_result = 0
+	for i in range (iterations):
+		print("\n" + "-"*25 + "\nBeginning Policy Iteration\n" + "-"*25)
 
-	print("\n" + "-"*25 + "\nBeginning Policy Iteration\n" + "-"*25)
+		V_pi, p_pi = policy_iteration(env.P, env.nS, env.nA, gamma=0.9, tol=1e-3)
+		det_policy_result += render_single(env, p_pi, 100)
 
-	V_pi, p_pi = policy_iteration(env.P, env.nS, env.nA, gamma=0.9, tol=1e-3)
-	render_single(env, p_pi, 100)
+		print("\n" + "-"*25 + "\nBeginning Value Iteration\n" + "-"*25)
 
-	print("\n" + "-"*25 + "\nBeginning Value Iteration\n" + "-"*25)
+		V_vi, p_vi = value_iteration(env.P, env.nS, env.nA, gamma=0.9, tol=1e-3)
+		det_val_result += render_single(env, p_vi, 100)
 
-	V_vi, p_vi = value_iteration(env.P, env.nS, env.nA, gamma=0.9, tol=1e-3)
-	render_single(env, p_vi, 100)
+	env = gym.make("Stochastic-4x4-FrozenLake-v0")
+	print("Begning Stochiastic Environment:")
+	stoch_policy_result = 0
+	stoch_val_result = 0
+	for i in range (iterations):
+		print("\n" + "-"*25 + "\nBeginning Policy Iteration\n" + "-"*25)
 
+		V_pi, p_pi = policy_iteration(env.P, env.nS, env.nA, gamma=0.9, tol=1e-3)
+		stoch_policy_result += render_single(env, p_pi, 100)
 
+		print("\n" + "-"*25 + "\nBeginning Value Iteration\n" + "-"*25)
+
+		V_vi, p_vi = value_iteration(env.P, env.nS, env.nA, gamma=0.9, tol=1e-3)
+		stoch_val_result += render_single(env, p_vi, 100)
+
+	print("After " + str(iterations) + " iterations, the deterministic policy had a rate of: " + str(det_policy_result/iterations))
+	print("After " + str(iterations) + " iterations, the deterministic value had a rate of: " + str(det_val_result/iterations))
+	print("After " + str(iterations) + " iterations, the stochiastic policy had a rate of: " + str(stoch_policy_result/iterations))
+	print("After " + str(iterations) + " iterations, the stochiastic value had a rate of: " + str(stoch_val_result/iterations))
