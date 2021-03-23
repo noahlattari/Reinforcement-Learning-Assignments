@@ -9,6 +9,7 @@ np.set_printoptions(precision=3)
 
 hole_states = [7, 9, 12]  # the states in the environment with holes
 
+
 def sample_action(policy, state):
     """
     Given a stochastic policy (can also be deterministic where only one action has probability 1),
@@ -34,6 +35,7 @@ def sample_action(policy, state):
     nS, nA = policy.shape
     all_actions = np.arange(nA)
     return np.random.choice(all_actions, p=policy[state])
+
 
 def take_one_step(env, policy, state):
     """
@@ -92,22 +94,15 @@ def generate_episode(env, policy, max_steps=500):
     curr_state = env.reset()  # reset the environment and place the agent in the start square
     ############################
     # YOUR IMPLEMENTATION HERE #
-
-    step_count = 0
-    while step_count < max_steps:
-        action, reward, new_state, done = take_one_step(env, policy, curr_state)
-        env.render()
-
-        episode.append((curr_state, action, reward))
-        curr_state = new_state
-        step_count += 1
-
-        if done:
-            print("Episode finished after " + str(step_count) + " steps.")
-            break
-
+    done = False
+    for i in range(0, max_steps):
+        while not done:
+            a, r, new_state, done = take_one_step(env, policy, curr_state)
+            episode.append((curr_state, a, r))
+            curr_state = new_state
     ############################
     return episode
+
 
 def generate_returns(episode, gamma=0.9):
     """
@@ -145,17 +140,13 @@ def generate_returns(episode, gamma=0.9):
     # using a vector of powers of gamma along with `np.dot` will
     # make this much easier to implement in a few lines of code.
     # You don't need to use this approach however and use whatever works for you. #
-    rewards = [curr_episode[2] for curr_episode in episode]
-
+    #rewards = [curr_episode[2] for curr_episode in episode]
+    rewards = []
+    for i in episode:
+        rewards.append(i[2])
     for i in range(len_episode):
         discount_factor = np.arange(0, len_episode - i)
-
-        reward_gamma = gamma ** discount_factor
-
-        curr_rewards = rewards[i:]
-
-        epi_returns[i] = np.dot(curr_rewards, reward_gamma)
-
+        epi_returns[i] = np.dot(rewards[i:], gamma ** discount_factor)
     ############################
     return epi_returns
 
@@ -192,25 +183,21 @@ def mc_policy_evaluation(env, policy, Q_value, n_visits, gamma=0.9):
     visit_flag = np.zeros((nS, nA))
     ############################
     # YOUR IMPLEMENTATION HERE #
-
-    total_returns = np.zeros((nS, nA))
-
+    total = np.zeros((nS, nA))
     for i in range(len(episode)):
-        curr_episode = episode[i]
-
-        if visit_flag[curr_episode[0], curr_episode[1]] < 1:
-            total_returns[curr_episode[0], curr_episode[1]] += returns[i]
-
-        visit_flag[curr_episode[0], curr_episode[1]] += 1
-
+        if visit_flag[episode[i][0], episode[i][1]] < 1:
+            total[episode[i][0], episode[i][1]] = total[episode[i][0], episode[i][1]] + returns[i]
+        visit_flag[episode[i][0], episode[i][1]] = visit_flag[episode[i][0], episode[i][1]] +1
     for i in range(nS):
         for j in range(nA):
             if visit_flag[i, j] > 0:
-                n_visits[i, j] += visit_flag[i, j]
-                Q_value[i, j] += (total_returns[i, j] - Q_value[i, j]) * (1 / n_visits[i, j])
-
+                n_visits[i, j] = n_visits[i, j] + visit_flag[i, j]
+                difference = total[i, j] - Q_value[i, j]
+                mult = 1 / n_visits[i, j]
+                Q_value[i, j] = Q_value[i, j] + ((difference) * (mult))
     ############################
     return Q_value, n_visits
+
 
 def epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon):
     """Given the Q_value function and epsilon generate a new epsilon-greedy policy.
@@ -241,27 +228,23 @@ def epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon):
     # HINT: IF TWO ACTIONS HAVE THE SAME MAXIMUM Q VALUE, THEY MUST BOTH BE EXECUTED EQUALLY LIKELY.
     #     THIS IS IMPORTANT FOR EXPLORATION. This might prove useful:
     #     https://stackoverflow.com/questions/17568612/how-to-make-numpy-argmax-return-all-occurrences-of-the-maximum
-
     n_visits = np.zeros((nS, nA))
     old_policy = new_policy
     i = 0
     while i == 0 or np.linalg.norm((new_policy - old_policy), ord=1) > 0:
-        if np.all(np.sum(new_policy, axis=1) == 1):
+        total = np.sum(new_policy, axis=1)
+        if np.all(total == 1):
             Q_value, n_visits = mc_policy_evaluation(env, new_policy, Q_value, n_visits)
-
         old_policy = new_policy
-
         for j in range(nS):
             actions = np.argwhere(Q_value[j] == np.amax(Q_value[j]))
-
             for k in range(nA):
+                top = epsilon/nA
                 if k in actions:
-                    new_policy[j, k] = (epsilon / nA) + ((1 - epsilon) / len(actions))
+                    new_policy[j, k] = top + ((1 - epsilon) / len(actions))
                 else:
-                    new_policy[j, k] = epsilon / nA
-
+                    new_policy[j, k] = top
         i += 1
-
     ############################
     return new_policy
 
@@ -294,17 +277,11 @@ def mc_glie(env, iterations=1000, gamma=0.9):
     ############################
     # YOUR IMPLEMENTATION HERE #
     # HINT: Don't forget to decay epsilon according to GLIE
-
     policy = epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon)
-
-    k = 1
-    while k <= iterations:
+    for i in range(1, iterations + 1):
         Q_value, n_visits = mc_policy_evaluation(env, policy, Q_value, n_visits, gamma)
-
-        k += 1
-        epsilon = 1 / k
-        policy = epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon)
-
+        i = i + 1
+        policy = epsilon_greedy_policy_improve(Q_value, nS, nA, 1/i)
     ############################
     det_policy = np.argmax(Q_value, axis=1)
     return Q_value, det_policy
@@ -342,7 +319,21 @@ def td_sarsa(env, iterations=1000, gamma=0.9, alpha=0.1):
     ############################
     # YOUR IMPLEMENTATION HERE #
     # HINT: Don't forget to decay epsilon according to GLIE
-
+    policy = epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon)
+    for i in range(0, iterations):
+        s_t1 = env.reset()
+        x = sample_action(policy, s_t1)
+        done = False
+        while not done:
+            new_state, reward, done, test = env.step(x)
+            y = sample_action(policy, new_state)
+            total = alpha * (reward + (gamma * Q_value[new_state, y]) - Q_value[s_t1, a_t1])
+            Q_value[s_t1, x] = Q_value[s_t1, x]  + total
+            s_t1 = new_state
+            policy = epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon)
+            x = y
+        i = i+1
+        epsilon = 1/i
     ############################
     det_policy = np.argmax(Q_value, axis=1)
     return Q_value, det_policy
@@ -378,7 +369,20 @@ def qlearning(env, iterations=1000, gamma=0.9, alpha=0.1):
     ############################
     # YOUR IMPLEMENTATION HERE #
     # HINT: Don't forget to decay epsilon according to GLIE
-
+    policy = epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon)
+    for i in range(0, iterations):
+        s_t1 = env.reset()
+        x = sample_action(policy, s_t1)
+        done = False
+        while not done:
+            new_state, reward, done, _ = env.step(x)
+            total = alpha * (reward + (gamma * max(Q_value[new_state])) - Q_value[s_t1, x])
+            Q_value[s_t1, x] = Q_value[s_t1, x] + total
+            s_t1 = new_state
+            policy = epsilon_greedy_policy_improve(Q_value, nS, nA, epsilon)
+            x = sample_action(policy, s_t1)
+        i = i + 1
+        epsilon = 1 / i
     ############################
     det_policy = np.argmax(Q_value, axis=1)
     return Q_value, det_policy
@@ -400,6 +404,7 @@ def render_single(env, policy, max_steps=100):
 
     episode_reward = 0
     ob = env.reset()
+    done = False
     for t in range(max_steps):
         env.render()
         time.sleep(0.25)
@@ -413,6 +418,7 @@ def render_single(env, policy, max_steps=100):
         print("The agent didn't reach a terminal state in {} steps.".format(max_steps))
     else:
         print("Episode reward: %f" % episode_reward)
+
 
 def test_performance(env, policy, nb_episodes=500, max_steps=500):
     """
@@ -443,28 +449,27 @@ def test_performance(env, policy, nb_episodes=500, max_steps=500):
                 break
 
     print("The success rate of the policy across {} episodes was {:.2f} percent.".format(nb_episodes,sum_returns/nb_episodes*100))
-
-
+    
 
 # Edit below to run the model-free methods on different environments and
 # visualize the resulting policies in action!
 # You may change the parameters in the functions below
 if __name__ == "__main__":
-    # comment/uncomment these lines to switch between deterministic/stochastic environments
-    env = gym.make("Deterministic-4x4-FrozenLake-v0")
-    #env = gym.make("Stochastic-4x4-FrozenLake-v0")
+    #comment/uncomment these lines to switch between deterministic/stochastic environments
+    #env = gym.make("Deterministic-4x4-FrozenLake-v0")
+    env = gym.make("Stochastic-4x4-FrozenLake-v0")
 
     print("\n" + "-" * 25 + "\nBeginning First-Visit Monte Carlo\n" + "-" * 25)
-    Q_mc, policy_mc = mc_glie(env, iterations=1000, gamma=0.9)
+    Q_mc, policy_mc = mc_glie(env, iterations=100, gamma=0.9)
     test_performance(env, policy_mc)
     # render_single(env, policy_mc, 100) # uncomment to see a single episode
 
     print("\n" + "-" * 25 + "\nBeginning Temporal-Difference\n" + "-" * 25)
-    Q_td, policy_td = td_sarsa(env, iterations=1000, gamma=0.9, alpha=0.1)
+    Q_td, policy_td = td_sarsa(env, iterations=100, gamma=0.9, alpha=0.1)
     test_performance(env, policy_td)
     # render_single(env, policy_td, 100) # uncomment to see a single episode
 
     print("\n" + "-" * 25 + "\nBeginning Q-Learning\n" + "-" * 25)
-    Q_ql, policy_ql = qlearning(env, iterations=1000, gamma=0.9, alpha=0.1)
+    Q_ql, policy_ql = qlearning(env, iterations=100, gamma=0.9, alpha=0.1)
     test_performance(env, policy_ql)
     # render_single(env, policy_ql, 100) # uncomment to see a single episode
